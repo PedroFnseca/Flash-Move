@@ -1,6 +1,7 @@
 import pygame
 import math
 import random
+import os
 
 
 class Renderer:
@@ -14,6 +15,7 @@ class Renderer:
         self.bg_image = None
         self.time = 0
         self.particles = []
+        self.courier_images = []
         
     def initialize(self):
         pygame.init()
@@ -35,6 +37,8 @@ class Renderer:
                 self.bg_image = pygame.transform.scale(self.bg_image, self.config.MAP_SIZE)
             except Exception:
                 self.bg_image = None
+        
+        self._load_courier_images()
     
     def draw(self, env, couriers, orders_queue, metrics, paused=False, speed_mult=1.0):
         self.time += 0.1
@@ -160,27 +164,29 @@ class Renderer:
             else:
                 color = self.config.COLORS['courier_to_dropoff']
             
+            if c.id < len(self.courier_images):
+                courier_img = self.courier_images[c.id]
+            else:
+                courier_img = pygame.Surface((64, 64), pygame.SRCALPHA)
+                pygame.draw.circle(courier_img, color, (32, 32), 32)
+            
+            img_size = courier_img.get_size()
+            img_rect = courier_img.get_rect(center=(x, y))
+            
             if self.config.SHOW_SHADOWS:
-                shadow_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
-                pygame.draw.circle(shadow_surf, (0, 0, 0, 60), (20, 22), 16)
-                self.screen.blit(shadow_surf, (x - 20, y - 20))
-            
-            glow_size = 50
-            glow_surf = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (*color, 40), (glow_size // 2, glow_size // 2), glow_size // 2)
-            self.screen.blit(glow_surf, (x - glow_size // 2, y - glow_size // 2))
-            
-            pygame.draw.circle(self.screen, color, (x, y), 16)
+                shadow_surf = pygame.Surface((img_size[0] + 10, img_size[1] + 10), pygame.SRCALPHA)
+                pygame.draw.ellipse(shadow_surf, (0, 0, 0, 60), 
+                                  (5, 7, img_size[0], img_size[1]))
+                self.screen.blit(shadow_surf, (x - img_size[0] // 2 - 5, y - img_size[1] // 2 - 5))
             
             if c.status != "idle":
-                pulse = abs(math.sin(self.time * 4)) * 3
-                pygame.draw.circle(self.screen, color, (x, y), int(16 + pulse), 2)
+                pulse = abs(math.sin(self.time * 4)) * 5
+                glow_size = int(img_size[0] // 2 + pulse)
+                glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (*color, 40), (glow_size, glow_size), glow_size)
+                self.screen.blit(glow_surf, (x - glow_size, y - glow_size))
             
-            pygame.draw.circle(self.screen, self.config.COLORS['background'], (x, y), 16, 2)
-            
-            label = self.small_font.render(f"C{c.id}", True, self.config.COLORS['text'])
-            label_rect = label.get_rect(center=(x, y))
-            self.screen.blit(label, label_rect)
+            self.screen.blit(courier_img, img_rect)
             
             status_colors = {
                 "idle": self.config.COLORS['success'],
@@ -188,8 +194,9 @@ class Renderer:
                 "to_dropoff": self.config.COLORS['warning']
             }
             status_color = status_colors.get(c.status, color)
-            pygame.draw.circle(self.screen, status_color, (x + 12, y - 12), 4)
-            pygame.draw.circle(self.screen, self.config.COLORS['background'], (x + 12, y - 12), 4, 1)
+            status_pos = (x + img_size[0] // 2 - 8, y - img_size[1] // 2 + 8)
+            pygame.draw.circle(self.screen, status_color, status_pos, 5)
+            pygame.draw.circle(self.screen, self.config.COLORS['background'], status_pos, 5, 1)
     
     def _draw_connections(self, couriers):
         for c in couriers:
@@ -363,9 +370,16 @@ class Renderer:
             }
             status_txt, status_color = status_map.get(c.status, (c.status, self.config.COLORS['text']))
             
-            color = self._get_courier_color(c.id)
-            pygame.draw.circle(self.screen, color, (panel_x + 25, y_offset + 8), 7)
-            pygame.draw.circle(self.screen, self.config.COLORS['background'], (panel_x + 25, y_offset + 8), 7, 1)
+
+            if c.id < len(self.courier_images):
+                courier_img = self.courier_images[c.id]
+                small_img = pygame.transform.scale(courier_img, (24, 24))
+                img_rect = small_img.get_rect(center=(panel_x + 25, y_offset + 8))
+                self.screen.blit(small_img, img_rect)
+            else:
+                color = self._get_courier_color(c.id)
+                pygame.draw.circle(self.screen, color, (panel_x + 25, y_offset + 8), 7)
+                pygame.draw.circle(self.screen, self.config.COLORS['background'], (panel_x + 25, y_offset + 8), 7, 1)
             
             txt = self.small_font.render(f"C{c.id}: {status_txt}", True, self.config.COLORS['text'])
             self.screen.blit(txt, (panel_x + 40, y_offset + 2))
@@ -429,6 +443,46 @@ class Renderer:
     def _get_courier_color(self, courier_id):
         palette = self.config.COLORS['courier_palette']
         return palette[courier_id % len(palette)]
+    
+    def _make_circular_image(self, img, size):
+        """Aplica uma máscara circular na imagem"""
+        if img.get_size() != (size, size):
+            img = pygame.transform.scale(img, (size, size))
+        
+        img_with_alpha = img.convert_alpha()
+        
+        final_img = pygame.Surface((size, size), pygame.SRCALPHA)
+        final_img.blit(img_with_alpha, (0, 0))
+        
+        center = size // 2
+        radius = size // 2
+        radius_sq = radius * radius
+        
+        for x in range(size):
+            for y in range(size):
+                dx = x - center
+                dy = y - center
+                if dx * dx + dy * dy > radius_sq:
+                    final_img.set_at((x, y), (0, 0, 0, 0))
+        
+        return final_img
+    
+    def _load_courier_images(self):
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
+        courier_image_files = ['Pedro.jpg', 'Barreto.png']
+        
+        self.courier_images = []
+        for img_file in courier_image_files:
+            img_path = os.path.join(assets_dir, img_file)
+            try:
+                img = pygame.image.load(img_path)
+                img = img.convert_alpha()
+                circular_img = self._make_circular_image(img, 64)
+                self.courier_images.append(circular_img)
+            except Exception as e:
+                placeholder = pygame.Surface((64, 64), pygame.SRCALPHA)
+                pygame.draw.circle(placeholder, (100, 100, 100, 255), (32, 32), 32)
+                self.courier_images.append(placeholder)
     
     def cleanup(self):
         pygame.quit()
