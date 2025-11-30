@@ -58,6 +58,7 @@ class Renderer:
         self._draw_header()
         self._draw_metrics_panel(env, orders_queue, metrics, couriers, paused, speed_mult)
         self._draw_courier_status_panel(couriers)
+        self._draw_pending_orders_panel(env, orders_queue, couriers)
     
     def _draw_background(self):
         for y in range(0, self.config.MAP_SIZE[1], 10):
@@ -525,6 +526,149 @@ class Renderer:
             self.screen.blit(deliveries_txt, (text_start_x, y_offset + 44))
             
             y_offset += row_spacing
+    
+    def _draw_pending_orders_panel(self, env, orders_queue, couriers):
+        active_orders = []
+        for c in couriers:
+            if c.current_order:
+                active_orders.append(c.current_order)
+        
+        total_orders = list(orders_queue) + active_orders
+        if not total_orders:
+            return
+        
+        panel_width = 320
+        max_cards = 6
+        card_height = 60
+        header_height = 50
+        card_spacing = 8
+        visible_cards = min(len(total_orders), max_cards)
+        
+        panel_height = header_height + 20 + (visible_cards * (card_height + card_spacing))
+        panel_x = self.config.MAP_SIZE[0] - panel_width - 20
+        
+        courier_panel_height = min(250, 125 + len(couriers) * 40)
+        panel_y = 80 + courier_panel_height + 20
+        
+        card_radius = 28
+        
+        shadow_offset = 4
+        for i in range(3):
+            alpha = 30 - i * 8
+            shadow_size = shadow_offset + i * 2
+            shadow_blur = pygame.Surface((panel_width + shadow_size * 2, panel_height + shadow_size * 2), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_blur, (0, 0, 0, alpha), 
+                           (shadow_size, shadow_size, panel_width, panel_height), 
+                           border_radius=card_radius)
+            self.screen.blit(shadow_blur, (panel_x - shadow_size, panel_y - shadow_size))
+        
+        panel_surf = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        bg_top = (50, 53, 60, 245)
+        bg_bottom = (40, 43, 50, 250)
+        
+        for y in range(panel_height):
+            factor = y / panel_height
+            r = int(bg_top[0] + (bg_bottom[0] - bg_top[0]) * factor)
+            g = int(bg_top[1] + (bg_bottom[1] - bg_top[1]) * factor)
+            b = int(bg_top[2] + (bg_bottom[2] - bg_top[2]) * factor)
+            a = int(bg_top[3] + (bg_bottom[3] - bg_top[3]) * factor)
+            pygame.draw.line(panel_surf, (r, g, b, a), (0, y), (panel_width, y))
+        
+        mask = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, panel_width, panel_height), border_radius=card_radius)
+        
+        for x in range(panel_width):
+            for y in range(panel_height):
+                mask_alpha = mask.get_at((x, y))[3]
+                if mask_alpha < 255:
+                    current_color = panel_surf.get_at((x, y))
+                    panel_surf.set_at((x, y), (*current_color[:3], int(current_color[3] * mask_alpha / 255)))
+        
+        self.screen.blit(panel_surf, (panel_x, panel_y))
+        
+        inner_padding = 20
+        content_x = panel_x + inner_padding
+        content_width = panel_width - inner_padding * 2
+        
+        header_y = panel_y + 12
+        
+        title = self.title_font.render("Entregas Pendentes", True, self.config.COLORS['text'])
+        title_rect = title.get_rect(center=(panel_x + panel_width // 2, header_y + header_height // 2))
+        self.screen.blit(title, title_rect)
+        
+        divider_y = header_y + header_height - 1
+        divider_color = (*self.config.COLORS['text_dim'], 40)
+        divider_surf = pygame.Surface((content_width, 1), pygame.SRCALPHA)
+        pygame.draw.rect(divider_surf, divider_color, (0, 0, content_width, 1))
+        self.screen.blit(divider_surf, (content_x, divider_y))
+        
+        y_offset = panel_y + header_height + 20
+        
+        sorted_orders = sorted(total_orders, key=lambda o: self._calculate_priority(o, env), reverse=True)
+        
+        for i, order in enumerate(sorted_orders[:visible_cards]):
+            is_active = order in active_orders
+            
+            wait_time = env.now - order.created
+            
+            if wait_time < self.config.ORDER_COLOR_THRESHOLDS['new']:
+                order_color = self.config.COLORS['order_new']
+                priority_text = "Baixa"
+            elif wait_time < self.config.ORDER_COLOR_THRESHOLDS['waiting']:
+                order_color = self.config.COLORS['order_waiting']
+                priority_text = "Média"
+            else:
+                order_color = self.config.COLORS['order_urgent']
+                priority_text = "Alta"
+            
+            card_surf = pygame.Surface((content_width, card_height), pygame.SRCALPHA)
+            card_bg = (*order_color, 40)
+            pygame.draw.rect(card_surf, card_bg, (0, 0, content_width, card_height), border_radius=12)
+            pygame.draw.rect(card_surf, order_color, (0, 0, content_width, card_height), width=2, border_radius=12)
+            
+            self.screen.blit(card_surf, (content_x, y_offset))
+            
+            order_id_text = f"#{order.id}"
+            order_id_label = self.font.render(order_id_text, True, self.config.COLORS['text'])
+            self.screen.blit(order_id_label, (content_x + 12, y_offset + 8))
+            
+            if is_active:
+                status_text = "Em Andamento"
+                for c in couriers:
+                    if c.current_order == order:
+                        if c.status == "to_pickup":
+                            status_text = "→ Coleta"
+                        elif c.status == "to_dropoff":
+                            status_text = "→ Entrega"
+                        break
+                status_label = self.small_font.render(status_text, True, self.config.COLORS['accent'])
+                self.screen.blit(status_label, (content_x + 12, y_offset + 30))
+            else:
+                status_text = "Na Fila"
+                status_label = self.small_font.render(status_text, True, self.config.COLORS['text_dim'])
+                self.screen.blit(status_label, (content_x + 12, y_offset + 30))
+            
+            priority_label = self.small_font.render(f"Prioridade: {priority_text}", True, order_color)
+            priority_rect = priority_label.get_rect()
+            priority_rect.topright = (content_x + content_width - 12, y_offset + 10)
+            self.screen.blit(priority_label, priority_rect)
+            
+            wait_time_text = f"{round(wait_time, 1)}s"
+            wait_label = self.small_font.render(wait_time_text, True, self.config.COLORS['text_dim'])
+            wait_rect = wait_label.get_rect()
+            wait_rect.topright = (content_x + content_width - 12, y_offset + 38)
+            self.screen.blit(wait_label, wait_rect)
+            
+            y_offset += card_height + card_spacing
+    
+    def _calculate_priority(self, order, env):
+        wait_time = env.now - order.created
+        if wait_time < self.config.ORDER_COLOR_THRESHOLDS['new']:
+            return 1
+        elif wait_time < self.config.ORDER_COLOR_THRESHOLDS['waiting']:
+            return 2
+        else:
+            return 3
     
     def _draw_metric_line(self, text, x, y, color, font=None):
         if font is None:
