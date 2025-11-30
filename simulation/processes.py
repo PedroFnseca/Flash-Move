@@ -61,9 +61,12 @@ def _assign_orders(orders_queue, couriers, metrics, env):
         
         for order in list(orders_queue):
             wait_time = env.now - order.created
+            base_priority = getattr(order, 'base_priority', 2.0)
+            
             for courier in free:
                 dist = courier.distance_to(order.pickup)
-                score = dist + wait_time * 5.0
+                priority_bonus = -(base_priority - 2.0) * 30.0
+                score = dist + wait_time * 5.0 + priority_bonus
                 
                 if score < best_score:
                     best_score = score
