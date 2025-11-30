@@ -254,84 +254,149 @@ class Renderer:
     
     def _draw_metrics_panel(self, env, orders_queue, metrics, couriers, paused, speed_mult):
         panel_width = 380
-        panel_height = 320
+        panel_height = 500
         panel_x = 20
         panel_y = 80
         
+        card_radius = 28
         panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
         
+        shadow_offset = 4
+        shadow_surf = pygame.Surface((panel_width + shadow_offset * 2, panel_height + shadow_offset * 2), pygame.SRCALPHA)
+        shadow_rect = pygame.Rect(shadow_offset, shadow_offset, panel_width, panel_height)
+        for i in range(3):
+            alpha = 30 - i * 8
+            shadow_size = shadow_offset + i * 2
+            shadow_blur = pygame.Surface((panel_width + shadow_size * 2, panel_height + shadow_size * 2), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_blur, (0, 0, 0, alpha), 
+                           (shadow_size, shadow_size, panel_width, panel_height), 
+                           border_radius=card_radius)
+            self.screen.blit(shadow_blur, (panel_x - shadow_size, panel_y - shadow_size))
+        
         panel_surf = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        pygame.draw.rect(panel_surf, self.config.COLORS['panel_bg'], (0, 0, panel_width, panel_height), border_radius=15)
+        bg_top = (50, 53, 60, 245)
+        bg_bottom = (40, 43, 50, 250)
+        
+        for y in range(panel_height):
+            factor = y / panel_height
+            r = int(bg_top[0] + (bg_bottom[0] - bg_top[0]) * factor)
+            g = int(bg_top[1] + (bg_bottom[1] - bg_top[1]) * factor)
+            b = int(bg_top[2] + (bg_bottom[2] - bg_top[2]) * factor)
+            a = int(bg_top[3] + (bg_bottom[3] - bg_top[3]) * factor)
+            pygame.draw.line(panel_surf, (r, g, b, a), (0, y), (panel_width, y))
+        
+        mask = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, panel_width, panel_height), border_radius=card_radius)
+        
+        for x in range(panel_width):
+            for y in range(panel_height):
+                mask_alpha = mask.get_at((x, y))[3]
+                if mask_alpha < 255:
+                    current_color = panel_surf.get_at((x, y))
+                    panel_surf.set_at((x, y), (*current_color[:3], int(current_color[3] * mask_alpha / 255)))
+        
         self.screen.blit(panel_surf, (panel_x, panel_y))
         
-        pygame.draw.rect(self.screen, self.config.COLORS['panel_border'], panel_rect, 2, border_radius=15)
+        inner_padding = 24
+        content_x = panel_x + inner_padding
+        content_width = panel_width - inner_padding * 2
+        
+        header_height = 50
+        header_y = panel_y + 12
+        
+        title = self.title_font.render("Métricas", True, self.config.COLORS['text'])
+        title_rect = title.get_rect(center=(panel_x + panel_width // 2, header_y + header_height // 2))
+        self.screen.blit(title, title_rect)
+        
+        divider_y = header_y + header_height - 1
+        divider_color = (*self.config.COLORS['text_dim'], 40)
+        divider_surf = pygame.Surface((content_width, 1), pygame.SRCALPHA)
+        pygame.draw.rect(divider_surf, divider_color, (0, 0, content_width, 1))
+        self.screen.blit(divider_surf, (content_x, divider_y))
+        
+        y_offset = panel_y + header_height + 20
+        
+        mobile_line_height = 24
+        soft_text_color = (200, 205, 215)
         
         completed = metrics['completed']
         total = metrics['total_orders']
         avg_delivery_time = metrics.get('total_delivery_time', 0) / max(1, completed)
         utilization = sum(c.total_busy_time for c in couriers) / (env.now * len(couriers)) * 100 if env.now > 0 else 0
         
-        title = self.title_font.render("📊 Métricas", True, self.config.COLORS['accent'])
-        self.screen.blit(title, (panel_x + 20, panel_y + 15))
-        
-        y_offset = panel_y + 50
-        line_height = 18
-        
         status_icon = "⏸️" if paused else "▶️"
         status_text = f"{status_icon} Tempo: {round(env.now, 1)} / {self.config.SIM_TIME}s"
-        self._draw_metric_line(status_text, panel_x + 20, y_offset, self.config.COLORS['text'])
-        y_offset += line_height
+        self._draw_metric_line(status_text, content_x, y_offset, soft_text_color)
+        y_offset += mobile_line_height
         
         speed_text = f"⚡ Velocidade: {round(speed_mult, 1)}x"
-        self._draw_metric_line(speed_text, panel_x + 20, y_offset, self.config.COLORS['text_dim'])
-        y_offset += line_height + 10
+        self._draw_metric_line(speed_text, content_x, y_offset, soft_text_color)
+        y_offset += mobile_line_height + 16
         
         metrics_data = [
             ("📦 Pendentes", len(orders_queue), self.config.COLORS['warning']),
-            ("📊 Total", total, self.config.COLORS['text']),
+            ("📊 Total", total, soft_text_color),
             ("✅ Atribuídos", metrics['assigned'], self.config.COLORS['accent']),
             ("✓  Completados", completed, self.config.COLORS['success']),
             ("❌ Desistências", metrics['desisted'], self.config.COLORS['danger']),
         ]
         
         for label, value, color in metrics_data:
+            if color == soft_text_color:
+                row_color = soft_text_color
+            else:
+                r, g, b = color
+                row_color = (min(255, r + 20), min(255, g + 20), min(255, b + 20))
+            
             text = f"{label}: {value}"
-            self._draw_metric_line(text, panel_x + 20, y_offset, color)
-            y_offset += line_height
+            self._draw_metric_line(text, content_x, y_offset, row_color)
+            y_offset += mobile_line_height
         
-        y_offset += 10
+        y_offset += 16
         
         success_rate = completed / max(1, total) * 100
         self._draw_metric_line(f"📈 Taxa de Sucesso: {round(success_rate, 1)}%", 
-                               panel_x + 20, y_offset, self.config.COLORS['text'])
-        y_offset += line_height
+                               content_x, y_offset, soft_text_color)
+        y_offset += mobile_line_height + 8
         
-        bar_x = panel_x + 20
+        bar_x = content_x
         bar_y = y_offset
-        bar_width = panel_width - 40
-        bar_height = 8
+        bar_width = content_width
+        bar_height = 12
         
-        pygame.draw.rect(self.screen, self.config.COLORS['background_light'], 
-                        (bar_x, bar_y, bar_width, bar_height), border_radius=4)
+        track_color = (*self.config.COLORS['background_light'], 180)
+        pygame.draw.rect(self.screen, track_color, 
+                        (bar_x, bar_y, bar_width, bar_height), border_radius=bar_height // 2)
         
         fill_width = int(bar_width * success_rate / 100)
         if fill_width > 0:
-            pygame.draw.rect(self.screen, self.config.COLORS['success'], 
-                            (bar_x, bar_y, fill_width, bar_height), border_radius=4)
+            if success_rate < 50:
+                base_color = self.config.COLORS['danger']
+            elif success_rate < 80:
+                base_color = self.config.COLORS['warning']
+            else:
+                base_color = self.config.COLORS['success']
+
+            pygame.draw.rect(
+                self.screen,
+                base_color,
+                (bar_x, bar_y, fill_width, bar_height),
+                border_radius=bar_height // 2
+            )
         
-        y_offset += line_height + 5
+        y_offset += mobile_line_height + 12
         
         self._draw_metric_line(f"⏱️  Tempo Médio: {round(avg_delivery_time, 1)}s", 
-                               panel_x + 20, y_offset, self.config.COLORS['text'])
-        y_offset += line_height
+                               content_x, y_offset, soft_text_color)
+        y_offset += mobile_line_height
         
         self._draw_metric_line(f"📊 Utilização: {round(utilization, 1)}%", 
-                               panel_x + 20, y_offset, self.config.COLORS['text'])
-        y_offset += line_height + 15
+                               content_x, y_offset, soft_text_color)
+        y_offset += mobile_line_height + 20
         
-        controls_title = self.font.render("🎮 Controles", True, self.config.COLORS['text_dim'])
-        self.screen.blit(controls_title, (panel_x + 20, y_offset))
-        y_offset += line_height + 5
+        controls_title = self.font.render("🎮 Controles", True, soft_text_color)
+        self.screen.blit(controls_title, (content_x, y_offset))
+        y_offset += mobile_line_height + 8
         
         controls = [
             "ESPAÇO: Pausar/Continuar",
@@ -340,54 +405,126 @@ class Renderer:
         ]
         
         for ctrl in controls:
-            self._draw_metric_line(ctrl, panel_x + 30, y_offset, self.config.COLORS['text_dim'], self.small_font)
-            y_offset += 14
+            self._draw_metric_line(ctrl, content_x + 8, y_offset, soft_text_color, self.small_font)
+            y_offset += 16
     
     def _draw_courier_status_panel(self, couriers):
         panel_width = 320
-        panel_height = min(200, 60 + len(couriers) * 35)
+        panel_height = min(250, 125 + len(couriers) * 40)
         panel_x = self.config.MAP_SIZE[0] - panel_width - 20
         panel_y = 80
         
+        card_radius = 28
         panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
         
+        shadow_offset = 4
+        for i in range(3):
+            alpha = 30 - i * 8
+            shadow_size = shadow_offset + i * 2
+            shadow_blur = pygame.Surface((panel_width + shadow_size * 2, panel_height + shadow_size * 2), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_blur, (0, 0, 0, alpha), 
+                           (shadow_size, shadow_size, panel_width, panel_height), 
+                           border_radius=card_radius)
+            self.screen.blit(shadow_blur, (panel_x - shadow_size, panel_y - shadow_size))
+        
         panel_surf = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        pygame.draw.rect(panel_surf, self.config.COLORS['panel_bg'], (0, 0, panel_width, panel_height), border_radius=15)
+        bg_top = (50, 53, 60, 245)
+        bg_bottom = (40, 43, 50, 250)
+        
+        for y in range(panel_height):
+            factor = y / panel_height
+            r = int(bg_top[0] + (bg_bottom[0] - bg_top[0]) * factor)
+            g = int(bg_top[1] + (bg_bottom[1] - bg_top[1]) * factor)
+            b = int(bg_top[2] + (bg_bottom[2] - bg_top[2]) * factor)
+            a = int(bg_top[3] + (bg_bottom[3] - bg_top[3]) * factor)
+            pygame.draw.line(panel_surf, (r, g, b, a), (0, y), (panel_width, y))
+        
+        mask = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, panel_width, panel_height), border_radius=card_radius)
+        
+        for x in range(panel_width):
+            for y in range(panel_height):
+                mask_alpha = mask.get_at((x, y))[3]
+                if mask_alpha < 255:
+                    current_color = panel_surf.get_at((x, y))
+                    panel_surf.set_at((x, y), (*current_color[:3], int(current_color[3] * mask_alpha / 255)))
+        
         self.screen.blit(panel_surf, (panel_x, panel_y))
         
-        pygame.draw.rect(self.screen, self.config.COLORS['panel_border'], panel_rect, 2, border_radius=15)
+        inner_padding = 20
+        content_x = panel_x + inner_padding
+        content_width = panel_width - inner_padding * 2
         
-        title = self.title_font.render("🚴 Couriers", True, self.config.COLORS['accent'])
-        self.screen.blit(title, (panel_x + 20, panel_y + 15))
+        header_height = 50
+        header_y = panel_y + 12
         
-        y_offset = panel_y + 50
+        title = self.title_font.render("Entregadores", True, self.config.COLORS['text'])
+        title_rect = title.get_rect(center=(panel_x + panel_width // 2, header_y + header_height // 2))
+        self.screen.blit(title, title_rect)
+        
+        divider_y = header_y + header_height - 1
+        divider_color = (*self.config.COLORS['text_dim'], 40)
+        divider_surf = pygame.Surface((content_width, 1), pygame.SRCALPHA)
+        pygame.draw.rect(divider_surf, divider_color, (0, 0, content_width, 1))
+        self.screen.blit(divider_surf, (content_x, divider_y))
+        
+        y_offset = panel_y + header_height + 20
+        row_spacing = 70
         
         for i, c in enumerate(couriers):
             status_map = {
-                "idle": ("⚪ Ocioso", self.config.COLORS['success']),
-                "to_pickup": ("🔵 → Coleta", self.config.COLORS['accent']),
-                "to_dropoff": ("🟣 → Entrega", self.config.COLORS['warning'])
+                "idle": ("Ocioso", self.config.COLORS['success']),
+                "to_pickup": ("→ Coleta", self.config.COLORS['accent']),
+                "to_dropoff": ("→ Entrega", self.config.COLORS['warning'])
             }
             status_txt, status_color = status_map.get(c.status, (c.status, self.config.COLORS['text']))
             
-
+            icon_size = 32
+            icon_x = content_x
+            icon_y = y_offset + 12
+            
             if c.id < len(self.courier_images):
                 courier_img = self.courier_images[c.id]
-                small_img = pygame.transform.scale(courier_img, (24, 24))
-                img_rect = small_img.get_rect(center=(panel_x + 25, y_offset + 8))
+                small_img = pygame.transform.scale(courier_img, (icon_size, icon_size))
+                
+                border_surf = pygame.Surface((icon_size + 4, icon_size + 4), pygame.SRCALPHA)
+                pygame.draw.circle(border_surf, (*self.config.COLORS['text'], 100), 
+                                 (icon_size // 2 + 2, icon_size // 2 + 2), icon_size // 2 + 2)
+                self.screen.blit(border_surf, (icon_x - 2, icon_y - 2))
+                
+                img_rect = small_img.get_rect(center=(icon_x + icon_size // 2, icon_y + icon_size // 2))
                 self.screen.blit(small_img, img_rect)
             else:
                 color = self._get_courier_color(c.id)
-                pygame.draw.circle(self.screen, color, (panel_x + 25, y_offset + 8), 7)
-                pygame.draw.circle(self.screen, self.config.COLORS['background'], (panel_x + 25, y_offset + 8), 7, 1)
+                pygame.draw.circle(self.screen, (*self.config.COLORS['text'], 100), 
+                                 (icon_x + icon_size // 2, icon_y + icon_size // 2), icon_size // 2 + 2)
+                pygame.draw.circle(self.screen, color, 
+                                 (icon_x + icon_size // 2, icon_y + icon_size // 2), icon_size // 2)
+                pygame.draw.circle(self.screen, (*self.config.COLORS['background'], 200), 
+                                 (icon_x + icon_size // 2, icon_y + icon_size // 2), icon_size // 2, 2)
             
-            txt = self.small_font.render(f"C{c.id}: {status_txt}", True, self.config.COLORS['text'])
-            self.screen.blit(txt, (panel_x + 40, y_offset + 2))
+            text_start_x = content_x + icon_size + 12
+            
+            courier_name = f"Entregador {c.id}"
+            name_txt = self.font.render(courier_name, True, self.config.COLORS['text'])
+            self.screen.blit(name_txt, (text_start_x, y_offset + 4))
+            
+            status_badge_x = text_start_x
+            status_badge_y = y_offset + 24
+            
+            badge_size = 6
+            pygame.draw.circle(self.screen, status_color, 
+                             (status_badge_x, status_badge_y + 7), badge_size)
+            pygame.draw.circle(self.screen, (*status_color, 150), 
+                             (status_badge_x, status_badge_y + 7), badge_size + 1, 1)
+            
+            status_display = self.font.render(status_txt, True, status_color)
+            self.screen.blit(status_display, (status_badge_x + 12, status_badge_y))
             
             deliveries_txt = self.small_font.render(f"{c.total_deliveries} entregas", True, self.config.COLORS['text_dim'])
-            self.screen.blit(deliveries_txt, (panel_x + 40, y_offset + 17))
+            self.screen.blit(deliveries_txt, (text_start_x, y_offset + 44))
             
-            y_offset += 35
+            y_offset += row_spacing
     
     def _draw_metric_line(self, text, x, y, color, font=None):
         if font is None:
@@ -445,7 +582,6 @@ class Renderer:
         return palette[courier_id % len(palette)]
     
     def _make_circular_image(self, img, size):
-        """Aplica uma máscara circular na imagem"""
         if img.get_size() != (size, size):
             img = pygame.transform.scale(img, (size, size))
         
