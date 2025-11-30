@@ -611,15 +611,20 @@ class Renderer:
             
             wait_time = env.now - order.created
             
-            if wait_time < self.config.ORDER_COLOR_THRESHOLDS['new']:
-                order_color = self.config.COLORS['order_new']
-                priority_text = "Baixa"
-            elif wait_time < self.config.ORDER_COLOR_THRESHOLDS['waiting']:
+            priority_score = self._calculate_priority(order, env)
+        
+            if priority_score >= 3.5:
+                order_color = self.config.COLORS['order_urgent']
+                priority_text = "Muito Alta"
+            elif priority_score >= 2.5:
+                order_color = self.config.COLORS['order_urgent']
+                priority_text = "Alta"
+            elif priority_score >= 1.5:
                 order_color = self.config.COLORS['order_waiting']
                 priority_text = "Média"
             else:
-                order_color = self.config.COLORS['order_urgent']
-                priority_text = "Alta"
+                order_color = self.config.COLORS['order_new']
+                priority_text = "Baixa"
             
             card_surf = pygame.Surface((content_width, card_height), pygame.SRCALPHA)
             card_bg = (*order_color, 40)
@@ -663,12 +668,20 @@ class Renderer:
     
     def _calculate_priority(self, order, env):
         wait_time = env.now - order.created
-        if wait_time < self.config.ORDER_COLOR_THRESHOLDS['new']:
-            return 1
-        elif wait_time < self.config.ORDER_COLOR_THRESHOLDS['waiting']:
-            return 2
-        else:
-            return 3
+        
+        base_priority = getattr(order, 'base_priority', 2.0)
+        
+        time_penalty = 0
+        if wait_time >= self.config.ORDER_COLOR_THRESHOLDS['waiting']:
+            time_penalty = 2.0 + min((wait_time - self.config.ORDER_COLOR_THRESHOLDS['waiting']) / 100, 1.0)
+        elif wait_time >= self.config.ORDER_COLOR_THRESHOLDS['new']:
+            time_penalty = 1.0 + (wait_time - self.config.ORDER_COLOR_THRESHOLDS['new']) / 70
+        
+        variability = random.uniform(-0.15, 0.15)
+        
+        priority_score = base_priority + time_penalty + variability
+        
+        return priority_score
     
     def _draw_metric_line(self, text, x, y, color, font=None):
         if font is None:

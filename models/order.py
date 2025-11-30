@@ -1,3 +1,5 @@
+import random
+import numpy as np
 class Order:
     newid = 0
     
@@ -10,6 +12,7 @@ class Order:
         self.assigned = None
         self.picked = None
         self.completed = None
+        self.base_priority = np.clip(np.random.normal(2.0, 0.8), 0.5, 3.5)
     
     @property
     def wait_time(self):
