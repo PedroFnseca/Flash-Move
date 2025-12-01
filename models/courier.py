@@ -1,11 +1,13 @@
 import numpy as np
+import random
 from collections import deque
 
 class Courier:
     
-    def __init__(self, env, cid, start_pos=(0, 0), service_speed=80.0):
+    def __init__(self, env, cid, start_pos=(0, 0), service_speed=80.0, name=None, metrics=None, config=None):
         self.env = env
         self.id = cid
+        self.name = name if name else f"Courier {cid}"
         self.pos = np.array(start_pos, dtype=float)
         self.status = "idle"
         self.current_order = None
@@ -14,6 +16,9 @@ class Courier:
         self.total_deliveries = 0
         self.trail = deque(maxlen=20)
         self.service_speed = service_speed
+        self.metrics = metrics
+        self.config = config
+        self.had_accident = False
         self._run_proc = env.process(self.process())
 
     def assign(self, order):
@@ -69,6 +74,16 @@ class Courier:
             
             self.pos = start + dist_vec * min(1.0, done_frac + frac)
             self.trail.append(tuple(self.pos))
+            
+            if self.config and self.metrics and not self.had_accident:
+                accident_prob = self.config.ACCIDENT_PROBABILITY * dt
+                if random.random() < accident_prob:
+                    self.had_accident = True
+                    self.metrics['accidents'] += 1
+                    print(f"\n🚨 ACIDENTE! {self.name} sofreu um acidente durante a entrega do pedido #{self.current_order.id if self.current_order else '?'}")
+                    print(f"   Posição: ({int(self.pos[0])}, {int(self.pos[1])}) - Tempo: {round(self.env.now, 1)}s\n")
+                    yield self.env.timeout(30)
+                    self.had_accident = False
             
             yield self.env.timeout(dt)
             remaining -= dt

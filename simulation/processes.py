@@ -4,8 +4,29 @@ from models import Order
 
 
 def order_generator(env, orders_queue, all_orders, metrics, config):
+    if config.PEAK_ENABLED:
+        peak_start = random.uniform(config.SIM_TIME * 0.3, config.SIM_TIME * 0.6)
+        peak_end = peak_start + config.PEAK_DURATION
+        metrics['peak_start'] = peak_start
+        metrics['peak_end'] = peak_end
+        metrics['peak_active'] = False
+    
     while env.now < config.SIM_TIME:
-        inter = np.random.exponential(config.INTERARRIVAL_MEAN)
+        in_peak = False
+        if config.PEAK_ENABLED and peak_start <= env.now < peak_end:
+            in_peak = True
+            if not metrics['peak_active']:
+                metrics['peak_active'] = True
+                print(f"\n🔥 PICO DE PEDIDOS INICIADO! Tempo: {round(env.now, 1)}s")
+        elif config.PEAK_ENABLED and env.now >= peak_end and metrics['peak_active']:
+            metrics['peak_active'] = False
+            print(f"\n✅ Pico de pedidos finalizado. Tempo: {round(env.now, 1)}s\n")
+        
+        if in_peak:
+            inter = np.random.exponential(config.INTERARRIVAL_MEAN / config.PEAK_MULTIPLIER)
+        else:
+            inter = np.random.exponential(config.INTERARRIVAL_MEAN)
+        
         yield env.timeout(inter)
         
         pickup = (
@@ -39,12 +60,21 @@ def _handle_order_abandonment(env, orders_queue, metrics, config):
         wait_time = env.now - o.created
         if len(orders_queue) > config.MAX_QUEUE_FORGIVE and wait_time > 0:
             p_give = min(
-                0.9,
-                0.02 * (len(orders_queue) - config.MAX_QUEUE_FORGIVE) + 0.001 * wait_time
+                0.99,
+                0.12 * (len(orders_queue) - config.MAX_QUEUE_FORGIVE) + 0.008 * wait_time
             )
             if random.random() < p_give:
                 orders_queue.remove(o)
                 metrics['desisted'] += 1
+                
+                if wait_time > 300:
+                    reason = "Tempo de espera muito longo"
+                elif len(orders_queue) > 40:
+                    reason = "Fila muito grande"
+                else:
+                    reason = "Cliente desistiu"
+                
+                print(f"Pedido #{o.id} desistiu - Motivo: {reason} (Espera: {round(wait_time, 1)}s, Fila: {len(orders_queue)+1})")
 
 
 def _assign_orders(orders_queue, couriers, metrics, env):
@@ -88,6 +118,8 @@ def _assign_orders(orders_queue, couriers, metrics, env):
 def monitor_completions(env, metrics, all_orders, config):
     if 'total_delivery_time' not in metrics:
         metrics['total_delivery_time'] = 0.0
+    if 'accidents' not in metrics:
+        metrics['accidents'] = 0
     
     while env.now < config.SIM_TIME:
         for o in list(all_orders):

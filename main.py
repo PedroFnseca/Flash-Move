@@ -31,20 +31,34 @@ def main():
                 break
     
     renderer.cleanup()
+    
+    in_progress = 0
+    for c in couriers:
+        if c.current_order and not c.current_order.completed:
+            in_progress += 1
+    
+    in_queue = len(orders_queue)
+    
+    metrics['in_progress'] = in_progress
+    metrics['in_queue'] = in_queue
+    
     print("Sim finished. Metrics:", metrics)
     
     print("\n=== Estatísticas Finais ===")
     print(f"Total de pedidos: {metrics['total_orders']}")
     print(f"Completados: {metrics['completed']}")
     print(f"Desistências: {metrics['desisted']}")
+    print(f"Em andamento (não finalizados): {in_progress}")
+    print(f"Na fila (não atribuídos): {in_queue}")
+    print(f"Acidentes de moto: {metrics.get('accidents', 0)}")
     print(f"Taxa de sucesso: {round(metrics['completed']/max(1, metrics['total_orders'])*100, 1)}%")
     
     avg_delivery = metrics.get('total_delivery_time', 0) / max(1, metrics['completed'])
     print(f"Tempo médio de entrega: {round(avg_delivery, 1)}s")
     
-    print("\n=== Estatísticas por Courier ===")
+    print("\n=== Estatísticas por Entregador ===")
     for c in couriers:
-        print(f"Courier {c.id}: {c.total_deliveries} entregas, "
+        print(f"{c.name}: {c.total_deliveries} entregas, "
               f"{round(c.utilization * 100, 1)}% utilização")
     
     sys.exit(0)

@@ -26,10 +26,12 @@ class Renderer:
             self.title_font = pygame.font.SysFont("Segoe UI", 18, bold=True)
             self.font = pygame.font.SysFont("Segoe UI", 13)
             self.small_font = pygame.font.SysFont("Segoe UI", 11)
+            self.alert_font = pygame.font.SysFont("Segoe UI", 24, bold=True)
         except:
             self.title_font = pygame.font.SysFont("Arial", 18, bold=True)
             self.font = pygame.font.SysFont("Arial", 13)
             self.small_font = pygame.font.SysFont("Arial", 11)
+            self.alert_font = pygame.font.SysFont("Arial", 24, bold=True)
         
         if self.config.BACKGROUND_IMAGE:
             try:
@@ -59,6 +61,7 @@ class Renderer:
         self._draw_metrics_panel(env, orders_queue, metrics, couriers, paused, speed_mult)
         self._draw_courier_status_panel(couriers)
         self._draw_pending_orders_panel(env, orders_queue, couriers)
+        self._draw_peak_alert(metrics, env)
     
     def _draw_background(self):
         for y in range(0, self.config.MAP_SIZE[1], 10):
@@ -506,7 +509,7 @@ class Renderer:
             
             text_start_x = content_x + icon_size + 12
             
-            courier_name = f"Entregador {c.id}"
+            courier_name = c.name
             name_txt = self.font.render(courier_name, True, self.config.COLORS['text'])
             self.screen.blit(name_txt, (text_start_x, y_offset + 4))
             
@@ -759,6 +762,62 @@ class Renderer:
                     final_img.set_at((x, y), (0, 0, 0, 0))
         
         return final_img
+    
+    def _draw_peak_alert(self, metrics, env):
+        """Desenha alerta de pico de pedidos na tela"""
+        if not metrics.get('peak_active', False):
+            return
+        
+        alert_width = 500
+        alert_height = 80
+        alert_x = (self.config.MAP_SIZE[0] - alert_width) // 2
+        alert_y = 70
+        
+        pulse = abs(math.sin(self.time * 3)) * 0.2 + 0.8
+        
+        shadow_surf = pygame.Surface((alert_width + 10, alert_height + 10), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_surf, (0, 0, 0, 100), (5, 5, alert_width, alert_height), border_radius=20)
+        self.screen.blit(shadow_surf, (alert_x - 5, alert_y - 5))
+        
+        alert_surf = pygame.Surface((alert_width, alert_height), pygame.SRCALPHA)
+        danger_color = self.config.COLORS['danger']
+        
+        for y in range(alert_height):
+            factor = y / alert_height
+            alpha = int(220 + 35 * factor)
+            r = int(danger_color[0] * pulse)
+            g = int(danger_color[1] * pulse)
+            b = int(danger_color[2] * pulse)
+            pygame.draw.line(alert_surf, (r, g, b, alpha), (0, y), (alert_width, y))
+        
+        mask = pygame.Surface((alert_width, alert_height), pygame.SRCALPHA)
+        pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, alert_width, alert_height), border_radius=20)
+        
+        for x in range(alert_width):
+            for y in range(alert_height):
+                mask_alpha = mask.get_at((x, y))[3]
+                if mask_alpha < 255:
+                    current_color = alert_surf.get_at((x, y))
+                    alert_surf.set_at((x, y), (*current_color[:3], int(current_color[3] * mask_alpha / 255)))
+        
+        self.screen.blit(alert_surf, (alert_x, alert_y))
+        
+        border_surf = pygame.Surface((alert_width, alert_height), pygame.SRCALPHA)
+        pygame.draw.rect(border_surf, (*danger_color, int(255 * pulse)), 
+                        (0, 0, alert_width, alert_height), width=3, border_radius=20)
+        self.screen.blit(border_surf, (alert_x, alert_y))
+        
+        alert_text = "🔥 PICO DE PEDIDOS! 🔥"
+        text_surface = self.alert_font.render(alert_text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=(alert_x + alert_width // 2, alert_y + alert_height // 2 - 8))
+        self.screen.blit(text_surface, text_rect)
+        
+        remaining = metrics.get('peak_end', 0) - env.now
+        if remaining > 0:
+            time_text = f"Tempo restante: {int(remaining)}s"
+            time_surface = self.small_font.render(time_text, True, (255, 255, 200))
+            time_rect = time_surface.get_rect(center=(alert_x + alert_width // 2, alert_y + alert_height // 2 + 18))
+            self.screen.blit(time_surface, time_rect)
     
     def _load_courier_images(self):
         assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')

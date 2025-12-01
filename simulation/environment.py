@@ -19,16 +19,23 @@ def setup_simulation(config):
         'assigned': 0,
         'completed': 0,
         'desisted': 0,
-        'total_delivery_time': 0.0
+        'in_progress': 0,
+        'accidents': 0,
+        'total_delivery_time': 0.0,
+        'peak_start': 0,
+        'peak_end': 0,
+        'peak_active': False
     }
     
+    courier_names = ["Pedro", "Fernando"]
     couriers = []
     for i in range(config.NUM_COURIERS):
         start = (
             config.MAP_SIZE[0] // 2 + random.uniform(-50, 50),
             config.MAP_SIZE[1] // 2 + random.uniform(-50, 50)
         )
-        c = Courier(env, i, start_pos=start, service_speed=config.SERVICE_SPEED)
+        name = courier_names[i] if i < len(courier_names) else f"Courier {i}"
+        c = Courier(env, i, start_pos=start, service_speed=config.SERVICE_SPEED, name=name, metrics=metrics, config=config)
         couriers.append(c)
     
     env.process(order_generator(env, orders_queue, all_orders, metrics, config))
