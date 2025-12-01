@@ -64,40 +64,90 @@ class Renderer:
         self._draw_peak_alert(metrics, env)
     
     def _draw_background(self):
-        for y in range(0, self.config.MAP_SIZE[1], 10):
+        # Gradiente de fundo mais suave e escuro
+        for y in range(0, self.config.MAP_SIZE[1], 8):
             factor = y / self.config.MAP_SIZE[1]
-            color = tuple(int(c + (self.config.COLORS['background_light'][i] - c) * factor * 0.3) 
-                         for i, c in enumerate(self.config.COLORS['background']))
-            pygame.draw.rect(self.screen, color, (0, y, self.config.MAP_SIZE[0], 10))
+            # Gradiente radial do centro
+            center_y = self.config.MAP_SIZE[1] / 2
+            distance_from_center = abs(y - center_y) / center_y
+            
+            r = int(self.config.COLORS['background'][0] + (self.config.COLORS['background_light'][0] - self.config.COLORS['background'][0]) * factor * 0.5)
+            g = int(self.config.COLORS['background'][1] + (self.config.COLORS['background_light'][1] - self.config.COLORS['background'][1]) * factor * 0.5)
+            b = int(self.config.COLORS['background'][2] + (self.config.COLORS['background_light'][2] - self.config.COLORS['background'][2]) * factor * 0.5)
+            
+            # Adicionar variação radial
+            vignette = 1 - (distance_from_center * 0.2)
+            r = int(r * vignette)
+            g = int(g * vignette)
+            b = int(b * vignette)
+            
+            pygame.draw.rect(self.screen, (r, g, b), (0, y, self.config.MAP_SIZE[0], 8))
     
     def _draw_grid(self):
+        # Grid com efeito de profundidade
         for i in range(0, self.config.MAP_SIZE[0], 50):
-            pygame.draw.line(self.screen, self.config.COLORS['grid'], 
-                           (i, 0), (i, self.config.MAP_SIZE[1]), 1)
-        for i in range(0, self.config.MAP_SIZE[1], 50):
-            pygame.draw.line(self.screen, self.config.COLORS['grid'], 
-                           (0, i), (self.config.MAP_SIZE[0], i), 1)
+            # Linhas verticais com gradiente
+            for y in range(0, self.config.MAP_SIZE[1], 50):
+                alpha = int(25 + 10 * math.sin(y / 100))
+                color = (*self.config.COLORS['grid'][:3], alpha) if len(self.config.COLORS['grid']) == 3 else self.config.COLORS['grid']
+                pygame.draw.line(self.screen, color, (i, y), (i, min(y + 50, self.config.MAP_SIZE[1])), 1)
         
-        for i in range(0, self.config.MAP_SIZE[0], 100):
+        for i in range(0, self.config.MAP_SIZE[1], 50):
+            # Linhas horizontais com gradiente
+            for x in range(0, self.config.MAP_SIZE[0], 50):
+                alpha = int(25 + 10 * math.sin(x / 100))
+                color = (*self.config.COLORS['grid'][:3], alpha) if len(self.config.COLORS['grid']) == 3 else self.config.COLORS['grid']
+                pygame.draw.line(self.screen, color, (x, i), (min(x + 50, self.config.MAP_SIZE[0]), i), 1)
+        
+        # Grid maior (major) com mais destaque
+        for i in range(0, self.config.MAP_SIZE[0], 200):
             pygame.draw.line(self.screen, self.config.COLORS['grid_major'], 
                            (i, 0), (i, self.config.MAP_SIZE[1]), 1)
-        for i in range(0, self.config.MAP_SIZE[1], 100):
+        for i in range(0, self.config.MAP_SIZE[1], 200):
             pygame.draw.line(self.screen, self.config.COLORS['grid_major'], 
                            (0, i), (self.config.MAP_SIZE[0], i), 1)
     
     def _draw_header(self):
-        header_height = 60
+        header_height = 70
         header_rect = pygame.Rect(0, 0, self.config.MAP_SIZE[0], header_height)
         
+        # Gradiente no header
         header_surf = pygame.Surface((self.config.MAP_SIZE[0], header_height), pygame.SRCALPHA)
-        pygame.draw.rect(header_surf, (*self.config.COLORS['background'], 200), (0, 0, self.config.MAP_SIZE[0], header_height))
+        for y in range(header_height):
+            factor = y / header_height
+            alpha = int(230 - factor * 50)
+            r = int(20 + factor * 15)
+            g = int(25 + factor * 15)
+            b = int(35 + factor * 15)
+            pygame.draw.line(header_surf, (r, g, b, alpha), (0, y), (self.config.MAP_SIZE[0], y))
         self.screen.blit(header_surf, (0, 0))
         
-        pygame.draw.line(self.screen, self.config.COLORS['accent'], 
-                        (0, header_height), (self.config.MAP_SIZE[0], header_height), 2)
+        # Linha de borda com brilho
+        glow_surf = pygame.Surface((self.config.MAP_SIZE[0], 6), pygame.SRCALPHA)
+        for i in range(3):
+            alpha = 80 - i * 25
+            pygame.draw.line(glow_surf, (*self.config.COLORS['accent'], alpha), 
+                           (0, i), (self.config.MAP_SIZE[0], i), 1)
+        self.screen.blit(glow_surf, (0, header_height - 3))
         
-        title = self.title_font.render("🚀 FLASH MOVE", True, self.config.COLORS['accent'])
-        self.screen.blit(title, (20, 15))
+        # Título com efeito de brilho
+        title_text = "🚀 FLASH MOVE"
+        
+        # Sombra do título
+        title_shadow = self.title_font.render(title_text, True, (0, 0, 0, 150))
+        self.screen.blit(title_shadow, (22, 18))
+        
+        # Título principal com gradiente simulado
+        title = self.title_font.render(title_text, True, self.config.COLORS['accent'])
+        self.screen.blit(title, (20, 16))
+        
+        # Brilho no título
+        pulse = abs(math.sin(self.time * 2)) * 0.3 + 0.7
+        glow_title = self.title_font.render(title_text, True, (*self.config.COLORS['accent'], int(100 * pulse)))
+        self.screen.blit(glow_title, (20, 16), special_flags=pygame.BLEND_ADD)
+        
+        subtitle = self.small_font.render("Simulação de Sistema de Delivery em Tempo Real", True, self.config.COLORS['text_dim'])
+        self.screen.blit(subtitle, (22, 44))
         
         subtitle = self.small_font.render("Simulação de Sistema de Delivery", True, self.config.COLORS['text_dim'])
         self.screen.blit(subtitle, (22, 38))
@@ -115,30 +165,77 @@ class Renderer:
             else:
                 color = self.config.COLORS['order_urgent']
             
-            self._draw_dashed_line((px, py), (dx, dy), color, dash_length=8)
+            # Linha tracejada com gradiente
+            self._draw_dashed_line((px, py), (dx, dy), color, dash_length=10)
             
+            # Dropoff com sombra e brilho
             if self.config.SHOW_SHADOWS:
-                pygame.draw.circle(self.screen, (0, 0, 0, 50), (dx + 2, dy + 2), 7)
-            pygame.draw.circle(self.screen, color, (dx, dy), 6, 2)
+                for i in range(3):
+                    shadow_alpha = 40 - i * 10
+                    pygame.draw.circle(self.screen, (0, 0, 0, shadow_alpha), (dx + 2 + i, dy + 2 + i), 8 + i)
             
+            # Anel externo do dropoff
+            pulse_drop = abs(math.sin(self.time * 2 + o.id * 0.5)) * 2 + 6
+            pygame.draw.circle(self.screen, (*color, 100), (dx, dy), int(pulse_drop), 2)
+            pygame.draw.circle(self.screen, color, (dx, dy), 7, 2)
+            pygame.draw.circle(self.screen, (*color, 150), (dx, dy), 4)
+            
+            # Pickup com animação pulsante aprimorada
             if self.config.SHOW_SHADOWS:
-                pygame.draw.circle(self.screen, (0, 0, 0, 50), (px + 2, py + 2), 10)
+                for i in range(3):
+                    shadow_alpha = 50 - i * 12
+                    pygame.draw.circle(self.screen, (0, 0, 0, shadow_alpha), (px + 2 + i, py + 2 + i), 11 + i)
             
-            pulse = math.sin(self.time * 3 + o.id) * 2 + 8
-            glow_surf = pygame.Surface((int(pulse * 3), int(pulse * 3)), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (*color, 30), (int(pulse * 1.5), int(pulse * 1.5)), int(pulse * 1.5))
-            self.screen.blit(glow_surf, (px - int(pulse * 1.5), py - int(pulse * 1.5)))
+            pulse = math.sin(self.time * 4 + o.id) * 3 + 10
             
-            pygame.draw.circle(self.screen, color, (px, py), 8)
-            pygame.draw.circle(self.screen, self.config.COLORS['background'], (px, py), 8, 2)
+            # Múltiplas camadas de brilho
+            for i in range(3, 0, -1):
+                glow_size = int(pulse * (1 + i * 0.3))
+                glow_alpha = int(40 / i)
+                glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (*color, glow_alpha), (glow_size, glow_size), glow_size)
+                self.screen.blit(glow_surf, (px - glow_size, py - glow_size))
             
+            # Círculo principal do pickup
+            pygame.draw.circle(self.screen, color, (px, py), 10)
+            pygame.draw.circle(self.screen, (*self.config.COLORS['background'], 200), (px, py), 10, 3)
+            
+            # Brilho interno
+            highlight_offset = 2
+            pygame.draw.circle(self.screen, (*color, 150), (px - highlight_offset, py - highlight_offset), 4)
+            
+            # Label com estilo aprimorado
             label_text = f"#{o.id}"
-            label = self.small_font.render(label_text, True, self.config.COLORS['text'])
+            label = self.small_font.render(label_text, True, (255, 255, 255))
             label_rect = label.get_rect()
-            label_rect.topleft = (px + 12, py - 8)
+            label_rect.topleft = (px + 14, py - 10)
             
-            bg_rect = label_rect.inflate(8, 4)
-            self._draw_rounded_rect(self.screen, bg_rect, (*color, 180), 6)
+            bg_rect = label_rect.inflate(10, 6)
+            
+            # Sombra do label
+            shadow_surf = pygame.Surface((bg_rect.width + 4, bg_rect.height + 4), pygame.SRCALPHA)
+            self._draw_rounded_rect(shadow_surf, pygame.Rect(2, 2, bg_rect.width, bg_rect.height), (0, 0, 0, 80), 8)
+            self.screen.blit(shadow_surf, (bg_rect.x - 2, bg_rect.y - 2))
+            
+            # Fundo do label com gradiente
+            label_surf = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+            for y in range(bg_rect.height):
+                factor = y / bg_rect.height
+                alpha = int(200 + 55 * factor)
+                pygame.draw.line(label_surf, (*color, alpha), (0, y), (bg_rect.width, y))
+            
+            # Aplicar bordas arredondadas
+            mask = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, bg_rect.width, bg_rect.height), border_radius=8)
+            for x in range(bg_rect.width):
+                for y in range(bg_rect.height):
+                    mask_alpha = mask.get_at((x, y))[3]
+                    if mask_alpha > 0:
+                        current = label_surf.get_at((x, y))
+                        label_surf.set_at((x, y), (*current[:3], int(current[3] * mask_alpha / 255)))
+            
+            self.screen.blit(label_surf, bg_rect)
+            pygame.draw.rect(self.screen, (*color, 255), bg_rect, 2, border_radius=8)
             self.screen.blit(label, label_rect)
     
     def _draw_courier_trails(self, couriers):
@@ -149,11 +246,17 @@ class Renderer:
             if len(c.trail) > 1:
                 trail_color = self._get_courier_color(c.id)
                 for i in range(len(c.trail) - 1):
-                    alpha = int(self.config.COLORS['trail_alpha'] * (i / len(c.trail)))
+                    progress = i / len(c.trail)
+                    alpha = int(self.config.COLORS['trail_alpha'] * progress)
                     color_with_alpha = (*trail_color, alpha)
                     
                     trail_surf = pygame.Surface((self.config.MAP_SIZE[0], self.config.MAP_SIZE[1]), pygame.SRCALPHA)
-                    thickness = max(1, int(3 * (i / len(c.trail))))
+                    thickness = max(2, int(5 * progress))
+                    
+                    # Desenhar brilho da trilha
+                    glow_thickness = thickness + 4
+                    pygame.draw.line(trail_surf, (*trail_color, int(alpha * 0.3)), 
+                                   c.trail[i], c.trail[i + 1], glow_thickness)
                     pygame.draw.line(trail_surf, color_with_alpha, c.trail[i], c.trail[i + 1], thickness)
                     self.screen.blit(trail_surf, (0, 0))
     
@@ -177,21 +280,48 @@ class Renderer:
             img_size = courier_img.get_size()
             img_rect = courier_img.get_rect(center=(x, y))
             
+            # Múltiplas camadas de sombra para profundidade
             if self.config.SHOW_SHADOWS:
-                shadow_surf = pygame.Surface((img_size[0] + 10, img_size[1] + 10), pygame.SRCALPHA)
-                pygame.draw.ellipse(shadow_surf, (0, 0, 0, 60), 
-                                  (5, 7, img_size[0], img_size[1]))
-                self.screen.blit(shadow_surf, (x - img_size[0] // 2 - 5, y - img_size[1] // 2 - 5))
+                for i in range(4, 0, -1):
+                    shadow_alpha = 70 - i * 15
+                    shadow_size = i * 2
+                    shadow_surf = pygame.Surface((img_size[0] + shadow_size * 2, img_size[1] + shadow_size * 2), pygame.SRCALPHA)
+                    pygame.draw.ellipse(shadow_surf, (0, 0, 0, shadow_alpha), 
+                                      (shadow_size, shadow_size + i, img_size[0] + shadow_size, img_size[1] + shadow_size))
+                    self.screen.blit(shadow_surf, (x - img_size[0] // 2 - shadow_size, y - img_size[1] // 2 - shadow_size))
             
+            # Anel de status ao redor do courier
             if c.status != "idle":
-                pulse = abs(math.sin(self.time * 4)) * 5
-                glow_size = int(img_size[0] // 2 + pulse)
-                glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
-                pygame.draw.circle(glow_surf, (*color, 40), (glow_size, glow_size), glow_size)
-                self.screen.blit(glow_surf, (x - glow_size, y - glow_size))
+                pulse = abs(math.sin(self.time * 5)) * 8 + img_size[0] // 2 + 8
+                
+                # Anel externo brilhante
+                for i in range(3):
+                    ring_alpha = int(80 - i * 25)
+                    ring_radius = int(pulse + i * 3)
+                    pygame.draw.circle(self.screen, (*color, ring_alpha), (x, y), ring_radius, 2)
             
+            # Glow pulsante baseado no status
+            if c.status != "idle":
+                pulse_glow = abs(math.sin(self.time * 4)) * 10 + 10
+                glow_size = int(img_size[0] // 2 + pulse_glow)
+                
+                # Múltiplas camadas de brilho
+                for i in range(3, 0, -1):
+                    layer_size = int(glow_size * (1 + i * 0.2))
+                    layer_alpha = int(50 / i)
+                    glow_surf = pygame.Surface((layer_size * 2, layer_size * 2), pygame.SRCALPHA)
+                    pygame.draw.circle(glow_surf, (*color, layer_alpha), (layer_size, layer_size), layer_size)
+                    self.screen.blit(glow_surf, (x - layer_size, y - layer_size))
+            
+            # Desenhar imagem do courier
             self.screen.blit(courier_img, img_rect)
             
+            # Borda brilhante ao redor da imagem
+            border_pulse = abs(math.sin(self.time * 3)) * 0.5 + 0.5
+            pygame.draw.circle(self.screen, (*color, int(150 * border_pulse)), 
+                             (x, y), img_size[0] // 2 + 2, 2)
+            
+            # Indicador de status aprimorado
             status_colors = {
                 "idle": self.config.COLORS['success'],
                 "to_pickup": self.config.COLORS['accent'],
@@ -199,8 +329,20 @@ class Renderer:
             }
             status_color = status_colors.get(c.status, color)
             status_pos = (x + img_size[0] // 2 - 8, y - img_size[1] // 2 + 8)
-            pygame.draw.circle(self.screen, status_color, status_pos, 5)
-            pygame.draw.circle(self.screen, self.config.COLORS['background'], status_pos, 5, 1)
+            
+            # Glow do indicador
+            indicator_glow = abs(math.sin(self.time * 6)) * 4 + 8
+            glow_surf = pygame.Surface((int(indicator_glow * 2), int(indicator_glow * 2)), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (*status_color, 60), 
+                             (int(indicator_glow), int(indicator_glow)), int(indicator_glow))
+            self.screen.blit(glow_surf, (status_pos[0] - int(indicator_glow), status_pos[1] - int(indicator_glow)))
+            
+            # Indicador sólido
+            pygame.draw.circle(self.screen, status_color, status_pos, 6)
+            pygame.draw.circle(self.screen, (255, 255, 255), status_pos, 6, 2)
+            
+            # Highlight interno
+            pygame.draw.circle(self.screen, (*status_color, 200), (status_pos[0] - 1, status_pos[1] - 1), 3)
     
     def _draw_connections(self, couriers):
         for c in couriers:
@@ -217,12 +359,38 @@ class Renderer:
                 mid_y = (y + ty) / 2
                 
                 order_text = f"#{c.current_order.id}"
-                order_label = self.small_font.render(order_text, True, self.config.COLORS['text'])
+                order_label = self.small_font.render(order_text, True, (255, 255, 255))
                 order_rect = order_label.get_rect(center=(int(mid_x), int(mid_y)))
                 
-                bg_rect = order_rect.inflate(10, 6)
-                self._draw_rounded_rect(self.screen, bg_rect, (*color, 200), 8)
-                pygame.draw.rect(self.screen, color, bg_rect, 1, border_radius=8)
+                bg_rect = order_rect.inflate(12, 8)
+                
+                # Sombra do badge
+                shadow_surf = pygame.Surface((bg_rect.width + 6, bg_rect.height + 6), pygame.SRCALPHA)
+                self._draw_rounded_rect(shadow_surf, pygame.Rect(3, 3, bg_rect.width, bg_rect.height), (0, 0, 0, 100), 10)
+                self.screen.blit(shadow_surf, (bg_rect.x - 3, bg_rect.y - 3))
+                
+                # Fundo com gradiente
+                badge_surf = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+                for y_pos in range(bg_rect.height):
+                    factor = y_pos / bg_rect.height
+                    alpha = int(220 + 35 * factor)
+                    pygame.draw.line(badge_surf, (*color, alpha), (0, y_pos), (bg_rect.width, y_pos))
+                
+                # Aplicar bordas arredondadas
+                mask = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+                pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, bg_rect.width, bg_rect.height), border_radius=10)
+                for x_pos in range(bg_rect.width):
+                    for y_pos in range(bg_rect.height):
+                        mask_alpha = mask.get_at((x_pos, y_pos))[3]
+                        if mask_alpha > 0:
+                            current = badge_surf.get_at((x_pos, y_pos))
+                            badge_surf.set_at((x_pos, y_pos), (*current[:3], int(current[3] * mask_alpha / 255)))
+                
+                self.screen.blit(badge_surf, bg_rect)
+                
+                # Borda brilhante
+                border_pulse = abs(math.sin(self.time * 4)) * 0.4 + 0.6
+                pygame.draw.rect(self.screen, (*color, int(255 * border_pulse)), bg_rect, 2, border_radius=10)
                 
                 self.screen.blit(order_label, order_rect)
     
@@ -231,30 +399,43 @@ class Renderer:
             return
         
         for c in couriers:
-            if c.status != "idle" and random.random() < 0.3:
+            if c.status != "idle" and random.random() < 0.4:
                 color = self._get_courier_color(c.id)
+                # Partículas em direções aleatórias
+                angle = random.uniform(0, 2 * math.pi)
+                speed = random.uniform(0.5, 2.0)
                 particle = {
                     'pos': list(c.pos),
-                    'vel': [random.uniform(-1, 1), random.uniform(-1, 1)],
-                    'life': 30,
-                    'color': color
+                    'vel': [math.cos(angle) * speed, math.sin(angle) * speed],
+                    'life': random.randint(20, 40),
+                    'max_life': 40,
+                    'color': color,
+                    'size': random.uniform(2, 5)
                 }
                 self.particles.append(particle)
         
         for p in self.particles[:]:
             p['pos'][0] += p['vel'][0]
             p['pos'][1] += p['vel'][1]
+            p['vel'][0] *= 0.98  # Arrasto
+            p['vel'][1] *= 0.98
             p['life'] -= 1
             if p['life'] <= 0:
                 self.particles.remove(p)
     
     def _draw_particles(self):
         for p in self.particles:
-            alpha = int((p['life'] / 30) * 100)
-            size = max(1, int((p['life'] / 30) * 4))
-            particle_surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
-            pygame.draw.circle(particle_surf, (*p['color'], alpha), (size, size), size)
-            self.screen.blit(particle_surf, (int(p['pos'][0]) - size, int(p['pos'][1]) - size))
+            life_factor = p['life'] / p.get('max_life', 30)
+            alpha = int(life_factor * 150)
+            size = int(p.get('size', 4) * life_factor)
+            
+            if size > 0:
+                # Glow da partícula
+                glow_size = size * 2
+                particle_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+                pygame.draw.circle(particle_surf, (*p['color'], int(alpha * 0.3)), (glow_size, glow_size), glow_size)
+                pygame.draw.circle(particle_surf, (*p['color'], alpha), (glow_size, glow_size), size)
+                self.screen.blit(particle_surf, (int(p['pos'][0]) - glow_size, int(p['pos'][1]) - glow_size))
     
     def _draw_metrics_panel(self, env, orders_queue, metrics, couriers, paused, speed_mult):
         panel_width = 380
@@ -722,20 +903,33 @@ class Renderer:
         x1, y1 = start
         x2, y2 = end
         
-        pygame.draw.line(self.screen, color, start, end, 2)
+        # Linha com gradiente de transparência
+        line_surf = pygame.Surface((self.config.MAP_SIZE[0], self.config.MAP_SIZE[1]), pygame.SRCALPHA)
+        
+        # Desenhar linha base com brilho
+        pygame.draw.line(line_surf, (*color, 80), start, end, 4)
+        pygame.draw.line(line_surf, (*color, 180), start, end, 2)
+        self.screen.blit(line_surf, (0, 0))
         
         dx = x2 - x1
         dy = y2 - y1
         distance = math.sqrt(dx**2 + dy**2)
         
         if distance > 0:
-            progress = (self.time * 0.5) % 1.0
-            point_x = x1 + dx * progress
-            point_y = y1 + dy * progress
-            
-            glow_surf = pygame.Surface((20, 20), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (*color, 150), (10, 10), 5)
-            self.screen.blit(glow_surf, (int(point_x) - 10, int(point_y) - 10))
+            # Múltiplos pontos animados ao longo da linha
+            for i in range(3):
+                progress = ((self.time * 0.8 + i * 0.33) % 1.0)
+                point_x = x1 + dx * progress
+                point_y = y1 + dy * progress
+                
+                # Brilho pulsante
+                pulse = abs(math.sin(self.time * 5 + i)) * 0.5 + 0.5
+                glow_size = int(8 * pulse)
+                
+                glow_surf = pygame.Surface((glow_size * 3, glow_size * 3), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (*color, int(100 * pulse)), (glow_size * 1.5, glow_size * 1.5), glow_size * 1.5)
+                pygame.draw.circle(glow_surf, (*color, int(200 * pulse)), (glow_size * 1.5, glow_size * 1.5), glow_size)
+                self.screen.blit(glow_surf, (int(point_x) - int(glow_size * 1.5), int(point_y) - int(glow_size * 1.5)))
     
     def _get_courier_color(self, courier_id):
         palette = self.config.COLORS['courier_palette']
